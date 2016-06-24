@@ -14,20 +14,18 @@ var utils = require('./utils');
 var DEFAULT_WIDTH = 940;
 var MOBILE_BREAKPOINT = 600;
 
-var PLAYBACK_SPEED = 100;
-var FIRST_YEAR = 2017;
-var LAST_YEAR = 2050;
+var BUCKETS = [
+    [0, 17],
+    [18, 24],
+    [25, 49],
+    [50, 64],
+    [65, 100]
+]
 
 var indexData = null;
 var ukData = {};
 var isMobile = false;
 var ages = [];
-var year = FIRST_YEAR;
-
-var playbackYear = FIRST_YEAR;
-var isPlaying = false;
-var hasPlayed = false;
-var restarting = false;
 
 /**
  * Initialize the graphic.
@@ -40,74 +38,46 @@ function init() {
 	}
 
 	request.json('data/countries/826.json', function(error, data) {
-		ukData = data;
+		ukData = [];
 
-		initSlider();
-		renderAll();
-		d3.select('.play').on('click', onPlayButtonClicked);
+		for (var b = 0; b < BUCKETS.length; b++) {
+			ukData.push([0, 0]);
+		}
+
+		for (var i = 0; i <= 100; i++) {
+			var m = data[2016][i][0];
+			var f = data[2016][i][1];
+
+			for (var b = 0; b < BUCKETS.length; b++) {
+				var x0 = BUCKETS[b][0];
+				var x1 = BUCKETS[b][1];
+
+				if (i >= x0 && i <= x1) {
+					ukData[b][0] += m;
+					ukData[b][1] += f;
+
+					break;
+				}
+			}
+		}
+
+		render();
 
 		$(window).resize(utils.throttle(onResize, 250));
 	});
-}
-
-function initSlider() {
-	d3.select('.slider').append('input')
-		.attr('type', 'range')
-		.attr('min', FIRST_YEAR)
-		.attr('max', LAST_YEAR)
-		.attr('value', playbackYear)
-
-	$('input[type="range"]').rangeslider().on('change', onYearSlide);
 }
 
 /**
  * Respond to browser resize.
  */
 function onResize() {
-    if (!isPlaying) {
-        renderAll();
-    }
-}
-
-function onPlayButtonClicked() {
-    d3.event.preventDefault();
-
-    if (playbackYear == LAST_YEAR) {
-        restarting = true;
-    }
-
-    playbackYear = FIRST_YEAR;
-    isPlaying = true;
-    renderAll();
-}
-
-function onYearSlide() {
-	playbackYear = d3.select(this).node().value.toString();
-
-	renderAll();
+    render();
 }
 
 /**
- * Calculate the max value in this country dataset.
+ * Figure out the current frame size and render the graphic.
  */
-function calculateMax(data) {
-	var m = 0;
-
-	for (var year in data) {
-		var ages = data[year];
-
-		for (var i in ages) {
-			m = Math.max(m, ages[i][0], ages[i][1]);
-		}
-	}
-
-	return m;
-}
-
-/**
- * Invoke on resize. Rerenders the graphics
- */
-function renderAll() {
+function render() {
 	var width = $('#interactive-content').width();
 
 	if (width <= MOBILE_BREAKPOINT) {
@@ -116,61 +86,10 @@ function renderAll() {
 		isMobile = false;
 	}
 
-	if (isPlaying) {
-        // Don't immediately advance if just showing first year
-        if (restarting) {
-            restarting = false;
-        } else {
-            playbackYear = playbackYear + 1;
-
-            if (playbackYear == LAST_YEAR) {
-                isPlaying = false;
-                hasPlayed = true;
-            }
-        }
-    }
-
-	d3.select('.year').text(playbackYear);
-	$('input[type="range"]').val(playbackYear);
-
-	var men = 0;
-	var women = 0;
-	var total_men = 0;
-	var total_women = 0;
-
-	for (var y = 0; y <= 100; y++) {
-		total_men += ukData[playbackYear][y][0] * 1000;
-		total_women += ukData[playbackYear][y][1] * 1000;
-
-		if ((2016 - playbackYear) + y < 18) {
-			men += ukData[playbackYear][y][0] * 1000;
-			women += ukData[playbackYear][y][1] * 1000;
-		}
-	}
-
-	d3.select('.count-men').text(men);
-	d3.select('.count-women').text(women);
-	d3.select('.pct-men').text(Math.round(men / total_men * 100));
-	d3.select('.pct-women').text(Math.round(men / total_men * 100));
-
-	render('#uk', ukData[playbackYear]);
-
-	if (isPlaying) {
-		_.delay(renderAll, PLAYBACK_SPEED);
-	}
-}
-
-/**
- * Figure out the current frame size and render the graphic.
- */
-function render(container, data, highlightAge) {
-	var width = $(container).width();
-
 	renderGraphic({
-		container: container,
+		container: '#uk',
 		width: width,
-		data: data,
-		highlightAge: highlightAge
+		data: ukData
 	});
 
 	// Inform parent frame of new height
@@ -185,10 +104,10 @@ function renderGraphic(config) {
 	var aspectRatio = 1;
 
 	var margins = {
-		top: 10,
+		top: 30,
 		right: 30,
 		bottom: 50,
-		left: 50
+		left: 60
 	};
 
 	// Calculate actual chart dimensions
@@ -216,11 +135,11 @@ function renderGraphic(config) {
 	 * Create D3 scales
 	 */
 	var xScale = d3.scale.linear()
-		.domain([-500, 500])
+		.domain([-12000, 12000])
 		.range([0, chartWidth]);
 
 	var yScale = d3.scale.ordinal()
-		.domain(ages)
+		.domain(_.range(BUCKETS.length))
 		.rangeBands([0, chartWidth]);
 
 	/*
@@ -235,30 +154,26 @@ function renderGraphic(config) {
 				return d;
 			}
 
-			return d + ',000';
+			return Math.abs(d) / 1000 + 'm';
 		});
 
 	var yAxis = d3.svg.axis()
 		.scale(yScale)
 		.orient('left')
 		.tickFormat(function(d, i) {
-			var interval = isMobile ? 20 : 10;
+			var bucket = BUCKETS[i];
 
-			if (i % interval == 0) {
-				if (i == 100) {
-					return 100 + '+';
-				}
-
-				return d;
+			if (bucket[1] == 100) {
+				return '65+';
 			}
 
-			return null;
+			return bucket[0] + "-" + bucket[1];
 		});
 
 	/*
 	 * Render axes to chart.
 	 */
-	chartElement.append('g')
+	xAxisElement = chartElement.append('g')
 		.attr('class', 'x axis')
 		.attr('transform', utils.makeTranslate(0, chartHeight))
 		.call(xAxis);
@@ -275,11 +190,11 @@ function renderGraphic(config) {
 		return xAxis;
 	};
 
-	chartElement.append('g')
+	xAxisElement.append('g')
 		.attr('class', 'x grid')
-		.attr('transform', utils.makeTranslate(0, chartHeight))
+		// .attr('transform', utils.makeTranslate(0, chartHeight))
 		.call(xAxisGrid()
-			.tickSize(-chartHeight, 0, 0)
+			.tickSize(-chartHeight, 0)
 			.tickFormat('')
 		);
 
@@ -294,11 +209,11 @@ function renderGraphic(config) {
 		chartElement.append('g')
 			.attr('class', 'bars')
 			.selectAll('rect')
-			.data(ages)
+			.data(config['data'])
 			.enter()
 			.append('rect')
 				.attr('x', function(d) {
-					var x = config['data'][d][gender] * direction;
+					var x = d[gender] * direction;
 
 					if (x >= 0) {
 						return xScale(0);
@@ -307,24 +222,33 @@ function renderGraphic(config) {
 					return xScale(x);
 				})
 				.attr('width', function(d) {
-					var x = config['data'][d][gender] * direction;
+					var x = d[gender] * direction;
 
 					return Math.abs(xScale(0) - xScale(x));
 				})
-				.attr('y', function(d) {
-					return yScale(d);
+				.attr('y', function(d, i) {
+					return yScale(i);
 				})
 				.attr('height', yScale.rangeBand())
 				.attr('class', function(d) {
 					var cls = 'age-' + d + ' gender-' + genders[gender];
 
-					if ((2016 - playbackYear) + d < 18) {
-						cls += ' highlight';
-					}
-
 					return cls;
 				});
 	}
+
+	chartElement.append('text')
+        .attr('class', 'left')
+        .attr('x', xScale(0) - 5)
+        .attr('y', -5)
+        .attr('text-anchor', 'end')
+        .text('◀ Men');
+
+    chartElement.append('text')
+        .attr('class', 'left')
+        .attr('x', xScale(0) + 5)
+        .attr('y', -5)
+        .text('Women ▶');
 }
 
 

@@ -9,8 +9,8 @@ import json
 LocID,Location,VarID,Variant,Time,AgeGrp,AgeGrpStart,AgeGrpSpan,PopMale,PopFemale,PopTotal
 """
 
-MIN_YEAR = 2015
-MAX_YEAR = 2050
+MIN_YEAR = 2016
+MAX_YEAR = 2016
 
 
 def main():

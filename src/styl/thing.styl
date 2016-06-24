@@ -15,6 +15,10 @@ clearfix()
         float: left
         width: 50%
 
+text
+    &.left,&.right
+        fill: $qz-chart-axis-text
+
 rect
     &.gender-male
         fill: $qz-purp-1
@@ -31,6 +35,9 @@ rect
 
         &.highlight
             fill: $qz-blue-3
+
+.footnote
+    color: $qz-chart-axis-text
 
 /*
  * Media queries
